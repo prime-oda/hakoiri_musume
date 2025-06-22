@@ -4,7 +4,7 @@
 
 ## 🎮 オンラインでプレイ
 
-**[▶️ GitHub Pagesでプレイする](https://USERNAME.github.io/hakoiri_musume/)**
+**[▶️ GitHub Pagesでプレイする](https://prime-oda.github.io/hakoiri_musume/)**
 
 ブラウザで直接プレイできます！インストール不要です。
 
