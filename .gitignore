@@ -72,5 +72,17 @@ Thumbs.db
 *.save
 *.log
 
+# Web development
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# GitHub Pages / Jekyll
+_site/
+.sass-cache/
+.jekyll-cache/
+.jekyll-metadata
+
 # Claude Code settings (keep local settings)
 .claude/settings.local.json

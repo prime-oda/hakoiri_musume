@@ -1,0 +1,21 @@
+# GitHub Pages設定
+title: "箱入り娘の大家族"
+description: "伝統的な日本のスライディングパズルゲーム"
+url: "https://USERNAME.github.io"
+baseurl: "/hakoiri_musume"
+
+# テーマ設定（GitHub Pagesでサポートされているテーマ）
+theme: minima
+
+# プラグイン
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+
+# 除外するファイル
+exclude:
+  - venv/
+  - __pycache__/
+  - "*.py"
+  - .gitignore
+  - CLAUDE.md

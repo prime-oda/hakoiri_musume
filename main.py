@@ -28,6 +28,8 @@ class HakoiriMusumeGame:
         self.drag_offset_y = 0
         self.possible_moves = []  # 選択された駒の移動可能位置
         self.hover_move = None    # ドラッグ中にハイライトされている移動先
+        self.game_completed = False  # ゲーム完了フラグ
+        self.move_count = 0       # 手数カウント
         self.setup_initial_pieces()
         
     def setup_initial_pieces(self):
@@ -147,6 +149,9 @@ class HakoiriMusumeGame:
     
     def handle_mouse_down(self, pos):
         """マウスダウン時の処理"""
+        if self.game_completed:
+            return
+            
         piece = self.get_piece_at_position(pos)
         if piece:
             # 前の選択を解除
@@ -163,7 +168,9 @@ class HakoiriMusumeGame:
             if len(possible_moves) == 1:
                 new_x, new_y = possible_moves[0]
                 if piece.move_to(new_x, new_y, self.board):
-                    print(f"{piece.name}を自動で ({new_x}, {new_y}) に移動しました")
+                    self.move_count += 1
+                    print(f"{piece.name}を自動で ({new_x}, {new_y}) に移動しました (手数: {self.move_count})")
+                    self.check_win_condition()
                 self.selected_piece = None
                 self.possible_moves = []
                 return
@@ -209,7 +216,9 @@ class HakoiriMusumeGame:
             if self.hover_move:
                 move_x, move_y = self.hover_move
                 if self.selected_piece.move_to(move_x, move_y, self.board):
-                    print(f"{self.selected_piece.name}を ({move_x}, {move_y}) に移動しました")
+                    self.move_count += 1
+                    print(f"{self.selected_piece.name}を ({move_x}, {move_y}) に移動しました (手数: {self.move_count})")
+                    self.check_win_condition()
                 else:
                     print("移動に失敗しました")
             else:
@@ -222,6 +231,24 @@ class HakoiriMusumeGame:
             self.selected_piece = None
         self.possible_moves = []
         self.hover_move = None
+    
+    def check_win_condition(self):
+        """勝利条件をチェック"""
+        # 娘の駒を探す
+        daughter = None
+        for piece in self.pieces:
+            if piece.name == "娘":
+                daughter = piece
+                break
+        
+        if daughter:
+            # 娘が脱出位置（2,3）に到達したかチェック
+            exit_x, exit_y = 2, 3
+            if daughter.x == exit_x and daughter.y == exit_y:
+                self.game_completed = True
+                print(f"🎉 ゲームクリア！娘を脱出させました！")
+                print(f"総手数: {self.move_count}手")
+                pygame.display.set_caption(f"箱入り娘の大家族 - ゲームクリア！({self.move_count}手)")
                 
     def update(self):
         pass
