@@ -438,10 +438,32 @@ class Game {
     }
 
     setupEventListeners() {
-        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-        this.canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
+        // マウスイベント
+        this.canvas.addEventListener('mousedown', (e) => this.handlePointerDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handlePointerMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handlePointerUp(e));
+        this.canvas.addEventListener('mouseleave', (e) => this.handlePointerUp(e));
+        
+        // タッチイベント
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // スクロール等を防止
+            this.handlePointerDown(e);
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // スクロール等を防止
+            this.handlePointerMove(e);
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.handlePointerUp(e);
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
+            this.handlePointerUp(e);
+        }, { passive: false });
     }
 
     setupUI() {

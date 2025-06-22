@@ -438,10 +438,32 @@ class Game {
     }
 
     setupEventListeners() {
-        this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
-        this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
-        this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
-        this.canvas.addEventListener('mouseleave', (e) => this.handleMouseUp(e));
+        // マウスイベント
+        this.canvas.addEventListener('mousedown', (e) => this.handlePointerDown(e));
+        this.canvas.addEventListener('mousemove', (e) => this.handlePointerMove(e));
+        this.canvas.addEventListener('mouseup', (e) => this.handlePointerUp(e));
+        this.canvas.addEventListener('mouseleave', (e) => this.handlePointerUp(e));
+        
+        // タッチイベント
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault(); // スクロール等を防止
+            this.handlePointerDown(e);
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault(); // スクロール等を防止
+            this.handlePointerMove(e);
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            this.handlePointerUp(e);
+        }, { passive: false });
+        
+        this.canvas.addEventListener('touchcancel', (e) => {
+            e.preventDefault();
+            this.handlePointerUp(e);
+        }, { passive: false });
     }
 
     setupUI() {
@@ -469,12 +491,51 @@ class Game {
         });
     }
 
-    getMousePos(e) {
+    getPointerPos(e) {
         const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        
+        let clientX, clientY;
+        
+        if (e.touches && e.touches.length > 0) {
+            // タッチイベントの場合
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            // touchendイベントの場合
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            // マウスイベントの場合
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
         };
+    }
+
+    getMousePos(e) {
+        // 後方互換性のため
+        return this.getPointerPos(e);
+    }
+
+    handleMouseDown(e) {
+        // 後方互換性のため
+        return this.handlePointerDown(e);
+    }
+
+    handleMouseMove(e) {
+        // 後方互換性のため
+        return this.handlePointerMove(e);
+    }
+
+    handleMouseUp(e) {
+        // 後方互換性のため
+        return this.handlePointerUp(e);
     }
 
     getPieceAtPosition(pos) {
@@ -493,11 +554,11 @@ class Game {
         return null;
     }
 
-    handleMouseDown(e) {
+    handlePointerDown(e) {
         if (this.gameCompleted) return;
         
-        const mousePos = this.getMousePos(e);
-        const piece = this.getPieceAtPosition(mousePos);
+        const pointerPos = this.getPointerPos(e);
+        const piece = this.getPieceAtPosition(pointerPos);
         
         if (piece) {
             // 前の選択を解除
@@ -529,8 +590,8 @@ class Game {
 
             // ドラッグオフセットを計算
             const piecePos = this.board.gridToPixel(piece.x, piece.y);
-            this.dragOffset.x = mousePos.x - piecePos.x;
-            this.dragOffset.y = mousePos.y - piecePos.y;
+            this.dragOffset.x = pointerPos.x - piecePos.x;
+            this.dragOffset.y = pointerPos.y - piecePos.y;
 
             // ステータス更新
             if (this.possibleMoves.length === 0) {
@@ -543,15 +604,15 @@ class Game {
         }
     }
 
-    handleMouseMove(e) {
+    handlePointerMove(e) {
         if (this.gameCompleted) return;
         
         if (this.selectedPiece && this.dragging) {
-            const mousePos = this.getMousePos(e);
+            const pointerPos = this.getPointerPos(e);
             
             // ドロップ位置を計算
-            const dropPixelX = mousePos.x - this.dragOffset.x;
-            const dropPixelY = mousePos.y - this.dragOffset.y;
+            const dropPixelX = pointerPos.x - this.dragOffset.x;
+            const dropPixelY = pointerPos.y - this.dragOffset.y;
 
             // ピクセル座標をグリッド座標に変換
             const dropGridX = Math.round((dropPixelX - this.board.startX) / this.board.cellSize);
@@ -570,7 +631,7 @@ class Game {
         }
     }
 
-    handleMouseUp(e) {
+    handlePointerUp(e) {
         if (this.dragging && this.selectedPiece) {
             // ハイライトされた移動先がある場合はそこに移動
             if (this.hoverMove) {
