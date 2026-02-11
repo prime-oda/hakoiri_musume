@@ -248,7 +248,7 @@ func runBenchmark(pieces []board.Piece, initial *board.Board) {
 		testPiece := moveGen.GetPiece(testMove.PieceID)
 		start = time.Now()
 		for i := 0; i < iterations; i++ {
-			zobrist.IncrementalHash(initialZobristHash, testPiece, testMove.FromX, testMove.FromY, testMove.Direction)
+			zobrist.IncrementalHash(initialZobristHash, testPiece, testMove.FromX, testMove.FromY, testMove.ToX, testMove.ToY)
 		}
 		elapsed = time.Since(start)
 		rate = float64(iterations) / elapsed.Seconds()
@@ -323,10 +323,15 @@ func writeSolution(pieces []board.Piece, initialBoard board.Board, result *solve
 			name = fmt.Sprintf("駒%c", 'A'+move.PieceID-1)
 		}
 		dirName := directionName(move.Direction)
-		fmt.Fprintf(f, "手順 %3d: %s を %s へ移動\n", i+1, name, dirName)
+		dist := move.Distance()
+		if dist > 1 {
+			fmt.Fprintf(f, "手順 %3d: %s を %s へ %dマス移動\n", i+1, name, dirName, dist)
+		} else {
+			fmt.Fprintf(f, "手順 %3d: %s を %s へ移動\n", i+1, name, dirName)
+		}
 
 		piece := pieceMap[move.PieceID]
-		currentBoard = board.ApplyMove(currentBoard, piece, move.FromX, move.FromY, move.Direction)
+		currentBoard = board.ApplyMoveTo(currentBoard, piece, move.FromX, move.FromY, move.ToX, move.ToY)
 	}
 
 	fmt.Fprintf(f, "\n最終盤面:\n")

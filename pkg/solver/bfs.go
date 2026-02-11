@@ -165,19 +165,19 @@ func (s *BFSSolver) Solve(initial *board.Board) (*SearchResult, error) {
 			}, nil
 		}
 
-		// Generate and apply moves
+		// Generate and apply moves (slide moves: 1+ cells in one direction)
 		moves := moveGen.Generate(&current.Board)
 		for _, move := range moves {
 			piece := moveGen.GetPiece(move.PieceID)
 
-			// Compute new hash incrementally (O(piece_size) instead of O(BoardSize))
-			newHash := hasher.IncrementalHash(current.Hash, piece, move.FromX, move.FromY, move.Direction)
+			// Compute new hash incrementally
+			newHash := hasher.IncrementalHash(current.Hash, piece, move.FromX, move.FromY, move.ToX, move.ToY)
 
 			if _, exists := visited[newHash]; !exists {
 				visited[newHash] = struct{}{}
 				stats.GeneratedStates++
 
-				newBoard := board.ApplyMove(current.Board, piece, move.FromX, move.FromY, move.Direction)
+				newBoard := board.ApplyMoveTo(current.Board, piece, move.FromX, move.FromY, move.ToX, move.ToY)
 
 				states = append(states, bfsState{
 					Board:     newBoard,

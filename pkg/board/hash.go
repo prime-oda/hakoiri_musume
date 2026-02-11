@@ -55,20 +55,16 @@ func (zh *ZobristHasher) Hash(b *Board) uint64 {
 	return h
 }
 
-// IncrementalHash updates a hash after applying a move.
+// IncrementalHash updates a hash after moving a piece from (fromX,fromY) to (toX,toY).
 // This is O(piece_size) instead of O(BoardSize) for a full hash.
-func (zh *ZobristHasher) IncrementalHash(oldHash uint64, piece *Piece, x, y int, dir Direction) uint64 {
-	delta := DirectionDelta[dir]
-	dx, dy := delta[0], delta[1]
-	nx, ny := x+dx, y+dy
+func (zh *ZobristHasher) IncrementalHash(oldHash uint64, piece *Piece, fromX, fromY, toX, toY int) uint64 {
 	pt := byte(piece.Type) + 1
-
 	h := oldHash
 
 	// XOR out old position cells
 	for row := 0; row < piece.Height; row++ {
 		for col := 0; col < piece.Width; col++ {
-			idx := (y+row)*BoardWidth + (x + col)
+			idx := (fromY+row)*BoardWidth + (fromX + col)
 			h ^= globalZobristTable[idx][pt]
 		}
 	}
@@ -76,7 +72,7 @@ func (zh *ZobristHasher) IncrementalHash(oldHash uint64, piece *Piece, x, y int,
 	// XOR in new position cells
 	for row := 0; row < piece.Height; row++ {
 		for col := 0; col < piece.Width; col++ {
-			idx := (ny+row)*BoardWidth + (nx + col)
+			idx := (toY+row)*BoardWidth + (toX + col)
 			h ^= globalZobristTable[idx][pt]
 		}
 	}
@@ -120,12 +116,12 @@ func (sh *StateHasher) Hash(b *Board) uint64 {
 	return sh.zobrist.Hash(b)
 }
 
-// IncrementalHash updates a hash after applying a move.
-func (sh *StateHasher) IncrementalHash(oldHash uint64, piece *Piece, x, y int, dir Direction) uint64 {
-	return sh.zobrist.IncrementalHash(oldHash, piece, x, y, dir)
+// IncrementalHash updates a hash after moving a piece.
+func (sh *StateHasher) IncrementalHash(oldHash uint64, piece *Piece, fromX, fromY, toX, toY int) uint64 {
+	return sh.zobrist.IncrementalHash(oldHash, piece, fromX, fromY, toX, toY)
 }
 
-// HashWithMove computes the hash after applying a move (without modifying the board).
+// HashWithMove computes the hash after applying a 1-cell move (without modifying the board).
 func (sh *StateHasher) HashWithMove(b *Board, piece *Piece, x, y int, dir Direction) uint64 {
 	tempBoard := ApplyMove(*b, piece, x, y, dir)
 	return sh.zobrist.Hash(&tempBoard)
