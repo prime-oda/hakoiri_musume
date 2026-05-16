@@ -172,20 +172,47 @@ func maxSlideDistance(dir Direction) int {
 	return BoardHeight - 1
 }
 
+// MaxPieceID is the inclusive upper bound on piece IDs the solver allocates.
+// Currently piece IDs are 1..14 (see DefaultPieces); we round up to give a little headroom.
+const MaxPieceID = 16
+
+// fillPositionsByID scans the board and records the top-left (x,y) of each piece keyed by ID.
+// Returns true at index i if piece i was seen on the board.
+// Caller supplies stack-resident arrays so we avoid per-call allocation.
+func fillPositionsByID(b *Board, positions *[MaxPieceID + 1]Position, seen *[MaxPieceID + 1]bool) {
+	for i := range seen {
+		seen[i] = false
+	}
+	for i, cell := range b.Grid {
+		if cell == 0 {
+			continue
+		}
+		id := int(cell)
+		if id > MaxPieceID || seen[id] {
+			continue
+		}
+		seen[id] = true
+		positions[id] = Position{X: i % BoardWidth, Y: i / BoardWidth}
+	}
+}
+
 // GenerateMoves generates all valid slide moves for the current board state.
 // A single move allows a piece to slide 1 or more cells in one direction,
 // as long as all intermediate cells along the path are clear.
 func GenerateMoves(b *Board, pieces []Piece, buf *MoveBuffer) {
 	buf.Reset()
 
-	positions := b.GetPiecePositions()
+	var positions [MaxPieceID + 1]Position
+	var seen [MaxPieceID + 1]bool
+	fillPositionsByID(b, &positions, &seen)
 
 	for i := range pieces {
 		piece := &pieces[i]
-		pos, ok := positions[piece.ID]
-		if !ok {
+		id := int(piece.ID)
+		if id > MaxPieceID || !seen[id] {
 			continue
 		}
+		pos := positions[id]
 
 		for dir := DirUp; dir <= DirRight; dir++ {
 			delta := DirectionDelta[dir]

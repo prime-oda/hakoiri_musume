@@ -55,6 +55,54 @@ func (zh *ZobristHasher) Hash(b *Board) uint64 {
 	return h
 }
 
+// MirrorIndex returns the cell index for the horizontally mirrored position.
+func MirrorIndex(idx int) int {
+	row := idx / BoardWidth
+	col := idx % BoardWidth
+	return row*BoardWidth + (BoardWidth - 1 - col)
+}
+
+// HashWithMirror computes both the regular and the horizontally mirrored hash for a board.
+// Since father/mother, hand/sister-in-law, etc. share their PieceType, the mirrored hash
+// represents the same puzzle state up to left-right reflection.
+func (zh *ZobristHasher) HashWithMirror(b *Board) (uint64, uint64) {
+	var h, mh uint64
+	for i, cell := range b.Grid {
+		if cell != 0 {
+			pt := zh.pieceTypeByID[cell]
+			h ^= globalZobristTable[i][pt]
+			mh ^= globalZobristTable[MirrorIndex(i)][pt]
+		}
+	}
+	return h, mh
+}
+
+// IncrementalMirrorHash updates the mirrored hash after moving a piece.
+// In the mirrored board, a piece at (x,y) with size (w,h) occupies (W-1-x-(w-1)..W-1-x, y..y+h-1).
+func (zh *ZobristHasher) IncrementalMirrorHash(oldHash uint64, piece *Piece, fromX, fromY, toX, toY int) uint64 {
+	pt := byte(piece.Type) + 1
+	h := oldHash
+
+	mFromX := BoardWidth - fromX - piece.Width
+	mToX := BoardWidth - toX - piece.Width
+
+	for row := 0; row < piece.Height; row++ {
+		for col := 0; col < piece.Width; col++ {
+			h ^= globalZobristTable[(fromY+row)*BoardWidth+(mFromX+col)][pt]
+			h ^= globalZobristTable[(toY+row)*BoardWidth+(mToX+col)][pt]
+		}
+	}
+	return h
+}
+
+// Canonical returns the smaller of (h, mh), used to identify mirror-equivalent states.
+func Canonical(h, mh uint64) uint64 {
+	if h < mh {
+		return h
+	}
+	return mh
+}
+
 // IncrementalHash updates a hash after moving a piece from (fromX,fromY) to (toX,toY).
 // This is O(piece_size) instead of O(BoardSize) for a full hash.
 func (zh *ZobristHasher) IncrementalHash(oldHash uint64, piece *Piece, fromX, fromY, toX, toY int) uint64 {
