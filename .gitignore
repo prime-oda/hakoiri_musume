@@ -72,6 +72,9 @@ Thumbs.db
 *.save
 *.log
 
+# Go build artifacts
+/solver
+
 # Web development
 node_modules/
 npm-debug.log*
