@@ -778,7 +778,8 @@ class Game {
         }
         this.solutionMoves = null;
         this.solutionSteps = 0;
-        
+        this.hideSolution();
+
         this.setupInitialPieces();
         this.updateUI();
         this.updateStatus('ゲームをリセットしました');
@@ -997,6 +998,7 @@ class Game {
             if (result) {
                 this.solutionMoves = result.moves;
                 this.solutionSteps = result.steps;
+                this.showSolution(result.moves);
                 this.updateStatus(`最短手: ${result.moves.length}手 (${result.states.toLocaleString()}状態探索, ${Math.round(result.time/1000)}秒, ${result.algorithm})`);
             } else {
                 this.updateStatus('解が見つかりませんでした（60手以内では解けません）');
@@ -1043,6 +1045,44 @@ class Game {
             this.solver = null;
             this.updateStatus('探索をキャンセルしました');
         }
+    }
+
+    formatSolverMove(move) {
+        const piece = this.pieces.find(p => p.id === move.pieceId);
+        const name = piece ? piece.name : `駒${move.pieceId}`;
+        const dx = move.toX - move.fromX;
+        const dy = move.toY - move.fromY;
+        let dir;
+        if (dy < 0) dir = '上';
+        else if (dy > 0) dir = '下';
+        else if (dx < 0) dir = '左';
+        else dir = '右';
+        // 移動は必ず水平または垂直の一方向。距離は非零の軸の絶対値。
+        const dist = Math.max(Math.abs(dx), Math.abs(dy));
+        return dist > 1
+            ? `${name} を ${dir} へ ${dist}マス移動`
+            : `${name} を ${dir} へ移動`;
+    }
+
+    showSolution(moves) {
+        const panel = document.getElementById('solutionPanel');
+        const list = document.getElementById('solutionList');
+        const count = document.getElementById('solutionCount');
+        list.innerHTML = '';
+        const frag = document.createDocumentFragment();
+        for (const m of moves) {
+            const li = document.createElement('li');
+            li.textContent = this.formatSolverMove(m);
+            frag.appendChild(li);
+        }
+        list.appendChild(frag);
+        count.textContent = moves.length;
+        panel.style.display = 'block';
+    }
+
+    hideSolution() {
+        const panel = document.getElementById('solutionPanel');
+        if (panel) panel.style.display = 'none';
     }
 }
 

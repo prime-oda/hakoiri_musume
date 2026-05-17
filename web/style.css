@@ -206,6 +206,46 @@ main {
     border: 1px solid #e0e0e0;
 }
 
+.solution-panel {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f1f3f4;
+    border-radius: 8px;
+    border: 1px solid #dadce0;
+}
+
+.solution-header {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #333;
+}
+
+.solution-list {
+    list-style: none;
+    counter-reset: step;
+    margin: 0;
+    padding: 8px 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    font-family: "Menlo", "Consolas", monospace;
+    font-size: 0.9em;
+    line-height: 1.6;
+    background: #fff;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
+}
+
+.solution-list li {
+    counter-increment: step;
+    padding: 1px 0;
+}
+
+.solution-list li::before {
+    content: "手順 " counter(step, decimal-leading-zero) ": ";
+    color: #666;
+    margin-right: 6px;
+}
+
 .instructions {
     background: #f8f9fa;
     padding: 25px;
