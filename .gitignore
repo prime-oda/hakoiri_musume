@@ -74,6 +74,10 @@ Thumbs.db
 
 # Go build artifacts
 /solver
+/precompute
+
+# Solver output
+/solve.txt
 
 # Web development
 node_modules/
