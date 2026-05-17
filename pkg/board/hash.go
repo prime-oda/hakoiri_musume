@@ -1,6 +1,7 @@
 package board
 
 import (
+	"encoding/binary"
 	"math/rand"
 )
 
@@ -26,6 +27,22 @@ func initZobristTable() ZobristTable {
 
 // globalZobristTable is the shared Zobrist table (initialized once).
 var globalZobristTable = initZobristTable()
+
+// ZobristTableBytes returns the global Zobrist table as little-endian uint64 bytes.
+// Layout is [cell_index][piece_type_value], piece_type_value in 0..NumPieceTypes (0 unused),
+// so the buffer has BoardSize*(NumPieceTypes+1)*8 = 1440 bytes on the standard 6x5 board.
+// The JS port reads the same buffer to hash boards identically.
+func ZobristTableBytes() []byte {
+	buf := make([]byte, BoardSize*(NumPieceTypes+1)*8)
+	off := 0
+	for i := 0; i < BoardSize; i++ {
+		for j := 0; j <= NumPieceTypes; j++ {
+			binary.LittleEndian.PutUint64(buf[off:], globalZobristTable[i][j])
+			off += 8
+		}
+	}
+	return buf
+}
 
 // ZobristHasher provides Zobrist hashing with piece-type normalization.
 // By using piece TYPE (not piece ID) as the hash key, pieces of the same

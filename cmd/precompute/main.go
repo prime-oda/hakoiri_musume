@@ -30,7 +30,7 @@ import (
 
 const (
 	fileMagic   = "HKMG"
-	fileVersion = uint16(1)
+	fileVersion = uint16(2)
 	headerSize  = 16
 )
 
@@ -103,7 +103,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "%s 書き込みエラー: %v\n", *outRaw, err)
 		os.Exit(1)
 	}
-	fmt.Printf("書き込み: %s (%d bytes)\n", *outRaw, headerSize+9*len(entries))
+	rawInfo, _ := os.Stat(*outRaw)
+	fmt.Printf("書き込み: %s (%d bytes)\n", *outRaw, rawInfo.Size())
 
 	if *outGz != "" {
 		gzSize, err := writeGzip(*outGz, *maxDepth, entries)
@@ -112,19 +113,22 @@ func main() {
 			os.Exit(1)
 		}
 		fmt.Printf("書き込み: %s (%d bytes, 圧縮率 %.2f)\n",
-			*outGz, gzSize, float64(gzSize)/float64(headerSize+9*len(entries)))
+			*outGz, gzSize, float64(gzSize)/float64(rawInfo.Size()))
 	}
 }
 
 // writeRaw serializes entries to the given path as:
-//   [0..3]   magic "HKMG"
-//   [4..5]   version (LE uint16)
-//   [6]      maxDepth (uint8)
-//   [7]      reserved (0)
-//   [8..11]  entryCount (LE uint32)
-//   [12..15] reserved (0)
-//   [16..]   count * 8 bytes: hashes (LE uint64), sorted ascending
-//   [..]     count * 1 byte:  distances (uint8), parallel to hashes
+//   [0..3]    magic "HKMG"
+//   [4..5]    version (LE uint16, = 2)
+//   [6]       maxDepth (uint8)
+//   [7]       reserved (0)
+//   [8..11]   entryCount (LE uint32)
+//   [12..15]  reserved (0)
+//   [16..1455] Zobrist table (1440 bytes): 30 cells * (NumPieceTypes+1=6) type slots *
+//             8 bytes LE uint64. Same layout pkg/board uses; ships with the file so the
+//             JS port hashes identically without reimplementing Go's math/rand sequence.
+//   [..]      count * 8 bytes: hashes (LE uint64), sorted ascending
+//   [..]      count * 1 byte:  distances (uint8), parallel to hashes
 //
 // SoA layout is friendly for JS BigUint64Array + Uint8Array, and lets us page in
 // the smaller distance array separately if we ever need to slim load time.
@@ -168,6 +172,12 @@ func writeTo(w writeFlusher, maxDepth int, entries []solver.GoalDistanceEntry) e
 	header[6] = byte(maxDepth)
 	binary.LittleEndian.PutUint32(header[8:12], uint32(len(entries)))
 	if _, err := w.Write(header); err != nil {
+		return err
+	}
+
+	// Zobrist table for parity with the JS port. The JS solver must hash boards
+	// with the same table that produced these `entries`, so we ship the table itself.
+	if _, err := w.Write(board.ZobristTableBytes()); err != nil {
 		return err
 	}
 

@@ -376,6 +376,11 @@ class Game {
         this.hoverMove = null;
         this.moveCount = 0;
         this.gameCompleted = false;
+        
+        // 最短手探索関連
+        this.solver = null;
+        this.solutionMoves = null;
+        this.solutionSteps = 0;
 
         this.setupInitialPieces();
         this.setupEventListeners();
@@ -472,6 +477,22 @@ class Game {
             this.resetGame();
         });
 
+        // 最短手探索ボタン
+        document.getElementById('solveBtn').addEventListener('click', () => {
+            this.solvePuzzle();
+            this.showSolverProgress();
+            document.getElementById('solveBtn').style.display = 'none';
+            document.getElementById('cancelBtn').style.display = 'inline-block';
+        });
+
+        // キャンセルボタン
+        document.getElementById('cancelBtn').addEventListener('click', () => {
+            this.cancelSolve();
+            this.hideSolverProgress();
+            document.getElementById('solveBtn').style.display = 'inline-block';
+            document.getElementById('cancelBtn').style.display = 'none';
+        });
+
         // ヘルプボタン
         document.getElementById('helpBtn').addEventListener('click', () => {
             document.getElementById('helpModal').style.display = 'block';
@@ -491,12 +512,51 @@ class Game {
         });
     }
 
-    getMousePos(e) {
+    getPointerPos(e) {
         const rect = this.canvas.getBoundingClientRect();
+        const scaleX = this.canvas.width / rect.width;
+        const scaleY = this.canvas.height / rect.height;
+        
+        let clientX, clientY;
+        
+        if (e.touches && e.touches.length > 0) {
+            // タッチイベントの場合
+            clientX = e.touches[0].clientX;
+            clientY = e.touches[0].clientY;
+        } else if (e.changedTouches && e.changedTouches.length > 0) {
+            // touchendイベントの場合
+            clientX = e.changedTouches[0].clientX;
+            clientY = e.changedTouches[0].clientY;
+        } else {
+            // マウスイベントの場合
+            clientX = e.clientX;
+            clientY = e.clientY;
+        }
+        
         return {
-            x: e.clientX - rect.left,
-            y: e.clientY - rect.top
+            x: (clientX - rect.left) * scaleX,
+            y: (clientY - rect.top) * scaleY
         };
+    }
+
+    getMousePos(e) {
+        // 後方互換性のため
+        return this.getPointerPos(e);
+    }
+
+    handleMouseDown(e) {
+        // 後方互換性のため
+        return this.handlePointerDown(e);
+    }
+
+    handleMouseMove(e) {
+        // 後方互換性のため
+        return this.handlePointerMove(e);
+    }
+
+    handleMouseUp(e) {
+        // 後方互換性のため
+        return this.handlePointerUp(e);
     }
 
     getPieceAtPosition(pos) {
@@ -515,11 +575,11 @@ class Game {
         return null;
     }
 
-    handleMouseDown(e) {
+    handlePointerDown(e) {
         if (this.gameCompleted) return;
         
-        const mousePos = this.getMousePos(e);
-        const piece = this.getPieceAtPosition(mousePos);
+        const pointerPos = this.getPointerPos(e);
+        const piece = this.getPieceAtPosition(pointerPos);
         
         if (piece) {
             // 前の選択を解除
@@ -551,8 +611,8 @@ class Game {
 
             // ドラッグオフセットを計算
             const piecePos = this.board.gridToPixel(piece.x, piece.y);
-            this.dragOffset.x = mousePos.x - piecePos.x;
-            this.dragOffset.y = mousePos.y - piecePos.y;
+            this.dragOffset.x = pointerPos.x - piecePos.x;
+            this.dragOffset.y = pointerPos.y - piecePos.y;
 
             // ステータス更新
             if (this.possibleMoves.length === 0) {
@@ -565,15 +625,15 @@ class Game {
         }
     }
 
-    handleMouseMove(e) {
+    handlePointerMove(e) {
         if (this.gameCompleted) return;
         
         if (this.selectedPiece && this.dragging) {
-            const mousePos = this.getMousePos(e);
+            const pointerPos = this.getPointerPos(e);
             
             // ドロップ位置を計算
-            const dropPixelX = mousePos.x - this.dragOffset.x;
-            const dropPixelY = mousePos.y - this.dragOffset.y;
+            const dropPixelX = pointerPos.x - this.dragOffset.x;
+            const dropPixelY = pointerPos.y - this.dragOffset.y;
 
             // ピクセル座標をグリッド座標に変換
             const dropGridX = Math.round((dropPixelX - this.board.startX) / this.board.cellSize);
@@ -592,7 +652,7 @@ class Game {
         }
     }
 
-    handleMouseUp(e) {
+    handlePointerUp(e) {
         if (this.dragging && this.selectedPiece) {
             // ハイライトされた移動先がある場合はそこに移動
             if (this.hoverMove) {
@@ -711,14 +771,310 @@ class Game {
         this.gameCompleted = false;
         this.board.grid = Array(this.board.height).fill().map(() => Array(this.board.width).fill(0));
         
+        // 最短手探索関連もリセット
+        if (this.solver) {
+            this.solver.cancel();
+            this.solver = null;
+        }
+        this.solutionMoves = null;
+        this.solutionSteps = 0;
+        
         this.setupInitialPieces();
         this.updateUI();
         this.updateStatus('ゲームをリセットしました');
         this.draw();
     }
+
+    // 状態表現とハッシュ化（同種駒を正規化）
+    getStateHash(pieces = this.pieces) {
+        // 駒を種類別に分類（同種駒を区別しない）
+        const pieceGroups = {};
+        
+        pieces.forEach(piece => {
+            let pieceType;
+            
+            // 同種駒を統一種類にマッピング
+            switch(piece.name) {
+                case '父':
+                case '母':
+                    pieceType = 'parent_1x2'; // 父母を区別しない
+                    break;
+                case '祖父':
+                case '祖母':
+                    pieceType = 'grandparent_2x1'; // 祖父母を区別しない
+                    break;
+                case '番頭':
+                case '女中':
+                    pieceType = 'staff_2x1'; // 番頭女中を区別しない
+                    break;
+                case '手代':
+                case '兄嫁':
+                case '番犬':
+                case '丁1':
+                case '丁2':
+                case '丁3':
+                    pieceType = 'small_1x1'; // 1×1の駒を区別しない
+                    break;
+                default:
+                    // 丁稚の名前パターンをチェック
+                    if (piece.name && piece.name.startsWith('丁')) {
+                        pieceType = 'small_1x1'; // 丁稚を区別しない
+                    } else {
+                        pieceType = `${piece.name}_${piece.width}x${piece.height}`;
+                    }
+            }
+            
+            if (!pieceGroups[pieceType]) {
+                pieceGroups[pieceType] = [];
+            }
+            pieceGroups[pieceType].push(`${piece.x},${piece.y}`);
+        });
+        
+        // 各種類内で位置をソートして正規化
+        const normalizedGroups = [];
+        for (const [type, positions] of Object.entries(pieceGroups)) {
+            positions.sort(); // 同種駒の位置をソート
+            normalizedGroups.push(`${type}:[${positions.join(';')}]`);
+        }
+        
+        // 種類もソートして完全に正規化
+        return normalizedGroups.sort().join('|');
+    }
+
+    clonePieces(pieces = this.pieces) {
+        return pieces.map(piece => ({
+            id: piece.id,
+            x: piece.x,
+            y: piece.y,
+            width: piece.width,
+            height: piece.height,
+            color: piece.color,
+            name: piece.name,
+            selected: false
+        }));
+    }
+
+    isGoalState(pieces = this.pieces) {
+        const daughter = pieces.find(p => p.name === '娘');
+        if (!daughter) return false;
+        
+        // 娘が脱出位置（2,3）に到達したかチェック
+        return daughter.x === 2 && daughter.y === 3;
+    }
+
+    generateAllMoves(pieces) {
+        if (!pieces || pieces.length === 0) {
+            return [];
+        }
+        
+        const moves = [];
+        
+        for (const piece of pieces) {
+            if (!piece || typeof piece.id === 'undefined') {
+                continue; // 無効な駒をスキップ
+            }
+            
+            // 各駒の可能な移動を取得
+            const possibleMoves = this.getPossibleMovesForPiece(piece, pieces);
+            if (!possibleMoves || possibleMoves.length === 0) {
+                continue; // この駒は移動できない
+            }
+            
+            for (const move of possibleMoves) {
+                if (!move || typeof move.x === 'undefined' || typeof move.y === 'undefined') {
+                    continue; // 無効な移動をスキップ
+                }
+                
+                moves.push({
+                    pieceId: piece.id,
+                    fromX: piece.x,
+                    fromY: piece.y,
+                    toX: move.x,
+                    toY: move.y,
+                    pieceName: piece.name || `駒${piece.id}`
+                });
+            }
+        }
+        
+        return moves;
+    }
+
+    getPossibleMovesForPiece(piece, pieces) {
+        const possibleMoves = [];
+        const directions = [
+            { x: 0, y: -1 }, // 上
+            { x: 0, y: 1 },  // 下
+            { x: -1, y: 0 }, // 左
+            { x: 1, y: 0 }   // 右
+        ];
+
+        for (const dir of directions) {
+            let step = 1;
+            while (true) {
+                const newX = piece.x + dir.x * step;
+                const newY = piece.y + dir.y * step;
+
+                // 境界チェック
+                if (newX < 0 || newY < 0 || 
+                    newX + piece.width > this.board.width || 
+                    newY + piece.height > this.board.height) {
+                    break;
+                }
+
+                if (this.canPieceMoveTo(piece, newX, newY, pieces)) {
+                    possibleMoves.push({ x: newX, y: newY });
+                    step++;
+                } else {
+                    break;
+                }
+            }
+        }
+        
+        return possibleMoves;
+    }
+
+    canPieceMoveTo(piece, newX, newY, pieces) {
+        // 移動先のセルが他の駒と重ならないかチェック
+        for (let dy = 0; dy < piece.height; dy++) {
+            for (let dx = 0; dx < piece.width; dx++) {
+                const checkX = newX + dx;
+                const checkY = newY + dy;
+                
+                // 他の駒との重複チェック
+                for (const otherPiece of pieces) {
+                    if (otherPiece.id === piece.id) continue;
+                    
+                    for (let oy = 0; oy < otherPiece.height; oy++) {
+                        for (let ox = 0; ox < otherPiece.width; ox++) {
+                            if (otherPiece.x + ox === checkX && otherPiece.y + oy === checkY) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    applyMove(pieces, move) {
+        const newPieces = this.clonePieces(pieces);
+        const piece = newPieces.find(p => p.id === move.pieceId);
+        
+        if (piece) {
+            piece.x = move.toX;
+            piece.y = move.toY;
+        }
+        
+        return newPieces;
+    }
+
+    // 最短手探索を開始
+    async solvePuzzle() {
+        if (this.solver) {
+            this.updateStatus('既に探索中です');
+            return;
+        }
+
+        this.updateStatus('最短手を探索中...');
+        this.solver = new PuzzleSolver(this);
+        
+        try {
+            // 最適化された探索戦略
+            this.updateSolverProgress(0, 0, 0, 0, '高速探索を開始...');
+            
+            // まずA*探索を試行（30手以内）
+            this.solver.maxDepth = 30;
+            let result = await this.solver.solveAStar();
+            
+            if (!result) {
+                // A*で見つからない場合は双方向探索
+                this.updateSolverProgress(0, 0, 0, 0, '双方向探索に切り替え...');
+                this.solver.maxDepth = 60;
+                result = await this.solver.solveBidirectional();
+            }
+            
+            if (result) {
+                this.solutionMoves = result.moves;
+                this.solutionSteps = result.steps;
+                this.updateStatus(`最短手: ${result.moves.length}手 (${result.states.toLocaleString()}状態探索, ${Math.round(result.time/1000)}秒, ${result.algorithm})`);
+            } else {
+                this.updateStatus('解が見つかりませんでした（60手以内では解けません）');
+            }
+        } catch (error) {
+            if (error.message === 'cancelled') {
+                this.updateStatus('探索をキャンセルしました');
+            } else {
+                this.updateStatus(`エラー: ${error.message}`);
+            }
+        }
+        
+        this.solver = null;
+        
+        // ボタン表示を戻す
+        this.hideSolverProgress();
+        document.getElementById('solveBtn').style.display = 'inline-block';
+        document.getElementById('cancelBtn').style.display = 'none';
+    }
+
+    showSolverProgress() {
+        document.getElementById('solverProgress').style.display = 'block';
+        this.updateSolverProgress(0, 0, 0, 0, '探索を開始しています...');
+    }
+
+    hideSolverProgress() {
+        document.getElementById('solverProgress').style.display = 'none';
+    }
+
+    updateSolverProgress(exploredStates, currentDepth, queueSize, progress, message) {
+        document.getElementById('exploredStates').textContent = exploredStates.toLocaleString();
+        document.getElementById('currentDepth').textContent = currentDepth;
+        document.getElementById('queueSize').textContent = queueSize.toLocaleString();
+        document.getElementById('progressMessage').textContent = message;
+        
+        // プログレスバーの更新（0-100%）
+        const progressPercent = Math.min(progress, 100);
+        document.getElementById('progressFill').style.width = `${progressPercent}%`;
+    }
+
+    cancelSolve() {
+        if (this.solver) {
+            this.solver.cancel();
+            this.solver = null;
+            this.updateStatus('探索をキャンセルしました');
+        }
+    }
 }
+
 
 // ゲーム開始
 document.addEventListener('DOMContentLoaded', () => {
-    new Game('gameCanvas');
+    window.game = new Game('gameCanvas');
+    
+    // デバッグ用関数
+    window.testSolver = function() {
+        try {
+            console.log('=== デバッグ情報 ===');
+            console.log('ゲーム状態:', window.game ? 'OK' : 'NULL');
+            console.log('駒の数:', window.game.pieces ? window.game.pieces.length : 'NULL');
+            console.log('状態ハッシュ:', window.game.getStateHash());
+            console.log('ゴール状態:', window.game.isGoalState());
+            
+            const moves = window.game.generateAllMoves(window.game.pieces);
+            console.log('可能手数:', moves ? moves.length : 'NULL');
+            
+            // 簡単なテスト: 1手だけ探索
+            if (moves && moves.length > 0) {
+                console.log('最初の可能手:', moves[0]);
+                const newPieces = window.game.applyMove(window.game.pieces, moves[0]);
+                console.log('移動後ハッシュ:', window.game.getStateHash(newPieces));
+            } else {
+                console.log('可能な手がありません');
+            }
+        } catch (error) {
+            console.error('デバッグエラー:', error);
+        }
+    };
+    
+    console.log('ゲーム初期化完了。window.testSolver()でテスト可能');
 });

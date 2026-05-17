@@ -78,6 +78,9 @@ main {
     cursor: pointer;
     transition: all 0.3s ease;
     font-weight: bold;
+    min-height: 48px;
+    min-width: 100px;
+    touch-action: manipulation;
 }
 
 #resetBtn {
@@ -100,6 +103,35 @@ main {
     box-shadow: 0 5px 15px rgba(78, 205, 196, 0.4);
 }
 
+#solveBtn {
+    background: linear-gradient(45deg, #9b59b6, #8e44ad);
+    color: white;
+}
+
+#solveBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(155, 89, 182, 0.4);
+}
+
+#cancelBtn {
+    background: linear-gradient(45deg, #e74c3c, #c0392b);
+    color: white;
+}
+
+#cancelBtn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+}
+
+#gameCanvas {
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
 .info-panel {
     background: #f8f9fa;
     padding: 20px;
@@ -119,6 +151,59 @@ main {
 .status {
     color: #666;
     font-style: italic;
+}
+
+.solver-progress {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f1f3f4;
+    border-radius: 8px;
+    border: 1px solid #dadce0;
+}
+
+.progress-bar {
+    width: 100%;
+    height: 20px;
+    background: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(45deg, #4caf50, #45a049);
+    width: 0%;
+    transition: width 0.3s ease;
+    animation: progressPulse 2s infinite;
+}
+
+@keyframes progressPulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+}
+
+.progress-text {
+    text-align: center;
+    font-weight: bold;
+    color: #333;
+    margin-bottom: 10px;
+}
+
+.progress-stats {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+    font-size: 0.9em;
+    color: #555;
+}
+
+.progress-stats div {
+    text-align: center;
+    padding: 5px;
+    background: #fff;
+    border-radius: 4px;
+    border: 1px solid #e0e0e0;
 }
 
 .instructions {
