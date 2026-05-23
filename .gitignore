@@ -74,6 +74,7 @@ Thumbs.db
 
 # Go build artifacts
 /solver
+/solver_classic
 /precompute
 /dumphash
 

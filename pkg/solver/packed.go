@@ -28,15 +28,15 @@ func unpackBoard(p *packedBoard) board.Board {
 }
 
 // packedMove stores the same information as board.Move using single bytes, slimming
-// the per-state memory cost in the BFS queue from ~48B to 6B (8B with alignment).
-// Field ranges: PieceID 0..14, From/To coordinates 0..5, Direction 0..3.
+// the per-state memory cost in the BFS queue. A move is fully described by its
+// endpoints, so only the piece ID and From/To coordinates are stored.
+// Field ranges: PieceID 0..14, From/To coordinates 0..5.
 type packedMove struct {
 	PieceID byte
 	FromX   int8
 	FromY   int8
 	ToX     int8
 	ToY     int8
-	Dir     int8
 }
 
 func packMove(m board.Move) packedMove {
@@ -46,17 +46,15 @@ func packMove(m board.Move) packedMove {
 		FromY:   int8(m.FromY),
 		ToX:     int8(m.ToX),
 		ToY:     int8(m.ToY),
-		Dir:     int8(m.Direction),
 	}
 }
 
 func (pm packedMove) toMove() board.Move {
 	return board.Move{
-		PieceID:   board.CellType(pm.PieceID),
-		FromX:     int(pm.FromX),
-		FromY:     int(pm.FromY),
-		ToX:       int(pm.ToX),
-		ToY:       int(pm.ToY),
-		Direction: board.Direction(pm.Dir),
+		PieceID: board.CellType(pm.PieceID),
+		FromX:   int(pm.FromX),
+		FromY:   int(pm.FromY),
+		ToX:     int(pm.ToX),
+		ToY:     int(pm.ToY),
 	}
 }

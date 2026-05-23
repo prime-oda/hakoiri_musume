@@ -20,30 +20,16 @@ var DirectionDelta = [4][2]int{
 	DirRight: {1, 0},
 }
 
-// Move represents a piece movement.
+// Move represents a single piece movement under the continuous-move rule:
+// the piece slides through empty cells to a reachable destination, changing
+// direction freely along the way. Only the endpoints (From/To) matter — the
+// path taken is not recorded.
 type Move struct {
-	PieceID   CellType
-	FromX     int
-	FromY     int
-	ToX       int
-	ToY       int
-	Direction Direction
-}
-
-// Distance returns how many cells this move slides.
-func (m Move) Distance() int {
-	dx := m.ToX - m.FromX
-	if dx < 0 {
-		dx = -dx
-	}
-	dy := m.ToY - m.FromY
-	if dy < 0 {
-		dy = -dy
-	}
-	if dx > dy {
-		return dx
-	}
-	return dy
+	PieceID CellType
+	FromX   int
+	FromY   int
+	ToX     int
+	ToY     int
 }
 
 // MoveBuffer is a reusable buffer for move generation.
@@ -74,102 +60,21 @@ func PutMoveBuffer(mb *MoveBuffer) {
 	movePool.Put(mb)
 }
 
-// CanMove checks if a piece can move in the given direction by 1 cell.
-func CanMove(b *Board, piece *Piece, x, y int, dir Direction) bool {
-	delta := DirectionDelta[dir]
-	dx, dy := delta[0], delta[1]
-	nx, ny := x+dx, y+dy
-
-	// Bounds check
-	if nx < 0 || ny < 0 || nx+piece.Width > BoardWidth || ny+piece.Height > BoardHeight {
-		return false
-	}
-
-	// Collision check - only check cells that will be newly occupied
-	switch dir {
-	case DirUp:
-		for i := 0; i < piece.Width; i++ {
-			cell := b.Grid[ny*BoardWidth+(nx+i)]
-			if cell != 0 && cell != piece.ID {
-				return false
-			}
-		}
-	case DirDown:
-		bottomY := ny + piece.Height - 1
-		for i := 0; i < piece.Width; i++ {
-			cell := b.Grid[bottomY*BoardWidth+(nx+i)]
-			if cell != 0 && cell != piece.ID {
-				return false
-			}
-		}
-	case DirLeft:
-		for i := 0; i < piece.Height; i++ {
-			cell := b.Grid[(ny+i)*BoardWidth+nx]
-			if cell != 0 && cell != piece.ID {
-				return false
-			}
-		}
-	case DirRight:
-		rightX := nx + piece.Width - 1
-		for i := 0; i < piece.Height; i++ {
-			cell := b.Grid[(ny+i)*BoardWidth+rightX]
-			if cell != 0 && cell != piece.ID {
-				return false
-			}
-		}
-	}
-
-	return true
-}
-
-// checkLeadingEdge checks if the leading edge at distance dist is clear.
-// The piece slides from (x, y) in the given direction.
-// At each incremental distance, we only need to check the new frontier cells
-// that the piece would newly occupy (cells outside the original piece footprint).
-func checkLeadingEdge(b *Board, pieceID CellType, pieceW, pieceH, x, y int, dir Direction, dist int) bool {
-	switch dir {
-	case DirUp:
-		row := y - dist
-		for c := 0; c < pieceW; c++ {
-			cell := b.Grid[row*BoardWidth+(x+c)]
-			if cell != 0 && cell != pieceID {
-				return false
-			}
-		}
-	case DirDown:
-		row := y + pieceH - 1 + dist
-		for c := 0; c < pieceW; c++ {
-			cell := b.Grid[row*BoardWidth+(x+c)]
-			if cell != 0 && cell != pieceID {
-				return false
-			}
-		}
-	case DirLeft:
-		col := x - dist
-		for r := 0; r < pieceH; r++ {
-			cell := b.Grid[(y+r)*BoardWidth+col]
-			if cell != 0 && cell != pieceID {
-				return false
-			}
-		}
-	case DirRight:
-		col := x + pieceW - 1 + dist
-		for r := 0; r < pieceH; r++ {
-			cell := b.Grid[(y+r)*BoardWidth+col]
+// footprintClear reports whether a piece of size (w, h) with the given ID can
+// occupy the rectangle whose top-left is (x, y). Cells holding the piece itself
+// count as clear: during a continuous move the piece vacates its starting cells,
+// so it may slide through them freely.
+func footprintClear(b *Board, pieceID CellType, w, h, x, y int) bool {
+	for row := 0; row < h; row++ {
+		base := (y+row)*BoardWidth + x
+		for col := 0; col < w; col++ {
+			cell := b.Grid[base+col]
 			if cell != 0 && cell != pieceID {
 				return false
 			}
 		}
 	}
 	return true
-}
-
-// maxSlideDistance returns the board dimension limit for sliding in a direction.
-func maxSlideDistance(dir Direction) int {
-	if dir == DirLeft || dir == DirRight {
-		return BoardWidth - 1
-	}
-	return BoardHeight - 1
 }
 
 // MaxPieceID is the inclusive upper bound on piece IDs the solver allocates.
@@ -196,9 +101,47 @@ func fillPositionsByID(b *Board, positions *[MaxPieceID + 1]Position, seen *[Max
 	}
 }
 
-// GenerateMoves generates all valid slide moves for the current board state.
-// A single move allows a piece to slide 1 or more cells in one direction,
-// as long as all intermediate cells along the path are clear.
+// reachableMoves runs a flood fill over the top-left positions a piece can
+// occupy, starting from (start). Each position reachable by sliding the piece
+// one cell at a time through empty space — turning as often as needed — is
+// emitted as one Move. The path is irrelevant; only the destination matters,
+// and each destination is emitted exactly once.
+func reachableMoves(b *Board, piece *Piece, start Position, emit func(Move)) {
+	var visited [BoardSize]bool
+	var queue [BoardSize]Position
+	head, tail := 0, 0
+
+	visited[start.Y*BoardWidth+start.X] = true
+	queue[tail] = start
+	tail++
+
+	for head < tail {
+		cur := queue[head]
+		head++
+		for dir := DirUp; dir <= DirRight; dir++ {
+			delta := DirectionDelta[dir]
+			nx, ny := cur.X+delta[0], cur.Y+delta[1]
+			if nx < 0 || ny < 0 || nx+piece.Width > BoardWidth || ny+piece.Height > BoardHeight {
+				continue
+			}
+			idx := ny*BoardWidth + nx
+			if visited[idx] {
+				continue
+			}
+			if !footprintClear(b, piece.ID, piece.Width, piece.Height, nx, ny) {
+				continue
+			}
+			visited[idx] = true
+			queue[tail] = Position{X: nx, Y: ny}
+			tail++
+			emit(Move{PieceID: piece.ID, FromX: start.X, FromY: start.Y, ToX: nx, ToY: ny})
+		}
+	}
+}
+
+// GenerateMoves generates all valid moves for the current board state.
+// Under the continuous-move rule a single move slides one piece through empty
+// cells to any reachable destination, changing direction as needed.
 func GenerateMoves(b *Board, pieces []Piece, buf *MoveBuffer) {
 	buf.Reset()
 
@@ -212,39 +155,13 @@ func GenerateMoves(b *Board, pieces []Piece, buf *MoveBuffer) {
 		if id > MaxPieceID || !seen[id] {
 			continue
 		}
-		pos := positions[id]
-
-		for dir := DirUp; dir <= DirRight; dir++ {
-			delta := DirectionDelta[dir]
-			dx, dy := delta[0], delta[1]
-
-			for dist := 1; dist <= maxSlideDistance(dir); dist++ {
-				nx, ny := pos.X+dx*dist, pos.Y+dy*dist
-
-				// Bounds check
-				if nx < 0 || ny < 0 || nx+piece.Width > BoardWidth || ny+piece.Height > BoardHeight {
-					break
-				}
-
-				// Check leading edge at this distance
-				if !checkLeadingEdge(b, piece.ID, piece.Width, piece.Height, pos.X, pos.Y, dir, dist) {
-					break
-				}
-
-				buf.Moves = append(buf.Moves, Move{
-					PieceID:   piece.ID,
-					FromX:     pos.X,
-					FromY:     pos.Y,
-					ToX:       nx,
-					ToY:       ny,
-					Direction: dir,
-				})
-			}
-		}
+		reachableMoves(b, piece, positions[id], func(m Move) {
+			buf.Moves = append(buf.Moves, m)
+		})
 	}
 }
 
-// GenerateMovesSimple generates all valid slide moves without buffer pooling.
+// GenerateMovesSimple generates all valid moves without buffer pooling.
 func GenerateMovesSimple(b *Board, pieces []Piece) []Move {
 	moves := make([]Move, 0, 64)
 
@@ -256,32 +173,9 @@ func GenerateMovesSimple(b *Board, pieces []Piece) []Move {
 		if !ok {
 			continue
 		}
-
-		for dir := DirUp; dir <= DirRight; dir++ {
-			delta := DirectionDelta[dir]
-			dx, dy := delta[0], delta[1]
-
-			for dist := 1; dist <= maxSlideDistance(dir); dist++ {
-				nx, ny := pos.X+dx*dist, pos.Y+dy*dist
-
-				if nx < 0 || ny < 0 || nx+piece.Width > BoardWidth || ny+piece.Height > BoardHeight {
-					break
-				}
-
-				if !checkLeadingEdge(b, piece.ID, piece.Width, piece.Height, pos.X, pos.Y, dir, dist) {
-					break
-				}
-
-				moves = append(moves, Move{
-					PieceID:   piece.ID,
-					FromX:     pos.X,
-					FromY:     pos.Y,
-					ToX:       nx,
-					ToY:       ny,
-					Direction: dir,
-				})
-			}
-		}
+		reachableMoves(b, piece, Position{X: pos.X, Y: pos.Y}, func(m Move) {
+			moves = append(moves, m)
+		})
 	}
 
 	return moves
@@ -304,51 +198,6 @@ func ApplyMoveTo(b Board, piece *Piece, fromX, fromY, toX, toY int) Board {
 	}
 
 	return b
-}
-
-// ApplyMove applies a 1-cell move to the board, returning a new board.
-// Kept for backward compatibility with other solvers.
-func ApplyMove(b Board, piece *Piece, x, y int, dir Direction) Board {
-	delta := DirectionDelta[dir]
-	return ApplyMoveTo(b, piece, x, y, x+delta[0], y+delta[1])
-}
-
-// ApplyMoveInPlace applies a 1-cell move to the board in place.
-func ApplyMoveInPlace(b *Board, piece *Piece, x, y int, dir Direction) {
-	delta := DirectionDelta[dir]
-	dx, dy := delta[0], delta[1]
-	nx, ny := x+dx, y+dy
-
-	for h := 0; h < piece.Height; h++ {
-		for w := 0; w < piece.Width; w++ {
-			b.Grid[(y+h)*BoardWidth+(x+w)] = 0
-		}
-	}
-
-	for h := 0; h < piece.Height; h++ {
-		for w := 0; w < piece.Width; w++ {
-			b.Grid[(ny+h)*BoardWidth+(nx+w)] = piece.ID
-		}
-	}
-}
-
-// UndoMove reverses a 1-cell move on the board in place.
-func UndoMove(b *Board, piece *Piece, x, y int, dir Direction) {
-	delta := DirectionDelta[dir]
-	dx, dy := delta[0], delta[1]
-	nx, ny := x+dx, y+dy
-
-	for h := 0; h < piece.Height; h++ {
-		for w := 0; w < piece.Width; w++ {
-			b.Grid[(ny+h)*BoardWidth+(nx+w)] = 0
-		}
-	}
-
-	for h := 0; h < piece.Height; h++ {
-		for w := 0; w < piece.Width; w++ {
-			b.Grid[(y+h)*BoardWidth+(x+w)] = piece.ID
-		}
-	}
 }
 
 // MoveGenerator is a stateful move generator that caches piece positions.

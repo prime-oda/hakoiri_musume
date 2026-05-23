@@ -13,7 +13,7 @@
 
 ### 基本ルール
 - スライディングパズル
-- 駒を上下左右にスライドさせて移動（同方向への複数マス移動は1手）
+- 1つの駒を空きマスを伝ってスライドさせる。途中で何度向きを変えてもよく、連続した一続きの動きを1手と数える
 - 目標：娘（2×2の赤い駒）を盤面下部の出口から脱出させる
 
 ### 盤面サイズ
@@ -52,12 +52,15 @@
 ├── web/                # ブラウザ版ゲーム（GitHub Pages配信元）
 │   ├── index.html
 │   ├── style.css
-│   └── game.js
+│   ├── game.js         # ゲーム本体
+│   ├── solver.js       # ブラウザ内 最短手ソルバー
+│   └── precomputed/    # ゴール距離テーブル
 ├── cmd/solver/         # Go ソルバー CLI
 │   └── main.go
+├── cmd/precompute/     # ゴール距離テーブル生成 CLI
 ├── pkg/
-│   ├── board/          # 盤面・移動生成・Zobristハッシュ
-│   └── solver/         # BFS / IDA* / A* / 双方向 / 並列探索
+│   ├── board/          # 盤面・移動生成（flood-fill）・Zobristハッシュ
+│   └── solver/         # BFS / 双方向探索 / 事前計算
 ├── go.mod
 └── .github/workflows/  # GitHub Pages デプロイ
 ```
@@ -87,17 +90,17 @@ go build -o solver ./cmd/solver
 ./solver
 
 # アルゴリズムを指定
-./solver -algo idastar
-./solver -algo astar
 ./solver -algo bidirectional
-./solver -algo parallel
+
+# 古典の箱入り娘（4×5・10駒）を解く
+go build -tags classic -o solver_classic ./cmd/solver
+./solver_classic
 ```
 
 ### 主なフラグ
 | フラグ | 説明 | デフォルト |
 |--------|------|------------|
-| `-algo` | `bfs` / `idastar` / `astar` / `bidirectional` / `parallel` | `bfs` |
-| `-workers` | 並列探索のワーカー数 | CPU数 |
+| `-algo` | `bfs` / `bidirectional` | `bfs` |
 | `-max-states` | 探索する最大状態数 | 10億 |
 | `-max-time` | 探索の最大時間 | 30分 |
 | `-verbose` | 進捗を表示 | false |

@@ -35,10 +35,11 @@ const (
 )
 
 func main() {
-	// K=21 yields ~9MB raw / ~7.8MB gzipped on the standard initial board — under the
-	// ~10MB bundle budget agreed for the browser port. Each additional depth roughly
-	// adds 1.3-1.4x the previous layer's entry count.
-	maxDepth := flag.Int("k", 21, "Maximum BFS depth from G_final (inclusive)")
+	// Under the continuous-move rule, K=26 yields ~8.1MB raw / ~7.2MB gzipped on the
+	// standard initial board — under the ~10MB bundle budget agreed for the browser port.
+	// K=27 would overshoot (~10.5MB gz). Each additional depth near here roughly adds
+	// 1.4x the previous layer's entry count.
+	maxDepth := flag.Int("k", 26, "Maximum BFS depth from G_final (inclusive)")
 	outRaw := flag.String("out", "web/precomputed/goal_distances.bin", "Output path for raw binary file")
 	outGz := flag.String("out-gz", "web/precomputed/goal_distances.bin.gz", "Output path for gzip-compressed file (empty to skip)")
 	maxTime := flag.Duration("max-time", 10*time.Minute, "Maximum runtime for each BFS phase")

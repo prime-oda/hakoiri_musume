@@ -32,14 +32,6 @@ type SearchResult struct {
 	Found bool
 }
 
-// State represents a search state with path tracking.
-// Used by parallel solver and other algorithms.
-type State struct {
-	Board board.Board
-	Path  []board.Move
-	Depth int
-}
-
 // bfsState is a memory-efficient BFS state.
 // Path is reconstructed via parent index rather than stored inline; the board is held in
 // packed (4-bit-per-cell) form and the move in single-byte fields. Together this brings

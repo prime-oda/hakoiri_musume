@@ -1,12 +1,8 @@
 // Package board provides the core data structures for the Hakoiri Musume puzzle.
+//
+// Board dimensions, default pieces, and the initial layout live in
+// config_extended.go (default) and config_classic.go (built with -tags classic).
 package board
-
-// BoardWidth and BoardHeight define the puzzle dimensions (6x5).
-const (
-	BoardWidth  = 6
-	BoardHeight = 5
-	BoardSize   = BoardWidth * BoardHeight // 30 cells
-)
 
 // CellType represents the state of each cell on the board.
 // 0 = empty, 1+ = piece ID
@@ -133,14 +129,13 @@ func (b *Board) ClearPiece(piece *Piece, x, y int) {
 }
 
 // IsGoal checks if the daughter piece is at the goal position.
-// Goal: daughter (2x2) at position (2, 3) - bottom center.
+// Goal cells are determined by GoalDaughterX / GoalDaughterY (see config_*.go).
 func (b *Board) IsGoal(daughterID CellType) bool {
-	// Check if daughter's top-left is at (2, 3)
-	// Daughter occupies (2,3), (3,3), (2,4), (3,4)
-	return b.Grid[3*BoardWidth+2] == daughterID &&
-		b.Grid[3*BoardWidth+3] == daughterID &&
-		b.Grid[4*BoardWidth+2] == daughterID &&
-		b.Grid[4*BoardWidth+3] == daughterID
+	const gx, gy = GoalDaughterX, GoalDaughterY
+	return b.Grid[gy*BoardWidth+gx] == daughterID &&
+		b.Grid[gy*BoardWidth+gx+1] == daughterID &&
+		b.Grid[(gy+1)*BoardWidth+gx] == daughterID &&
+		b.Grid[(gy+1)*BoardWidth+gx+1] == daughterID
 }
 
 // PrintBoard returns a string representation of the board for debugging.
@@ -160,70 +155,5 @@ func (b *Board) String() string {
 	return result
 }
 
-// DefaultPieces returns the standard piece configuration for Hakoiri Musume puzzle.
-func DefaultPieces() []Piece {
-	return []Piece{
-		{ID: 1, Width: 2, Height: 2, Type: PieceTypeDaughter, IsMain: true},    // 娘 (2x2)
-		{ID: 2, Width: 1, Height: 2, Type: PieceTypeFatherMother},              // 父 (1x2)
-		{ID: 3, Width: 1, Height: 2, Type: PieceTypeFatherMother},              // 母 (1x2)
-		{ID: 4, Width: 4, Height: 1, Type: PieceTypeGrandManager},              // 大番頭 (4x1)
-		{ID: 5, Width: 1, Height: 1, Type: PieceTypeSmall},                     // 手代 (1x1)
-		{ID: 6, Width: 2, Height: 1, Type: PieceTypeFamily},                    // 女中 (2x1)
-		{ID: 7, Width: 2, Height: 1, Type: PieceTypeFamily},                    // 番頭 (2x1)
-		{ID: 8, Width: 2, Height: 1, Type: PieceTypeFamily},                    // 祖父 (2x1)
-		{ID: 9, Width: 2, Height: 1, Type: PieceTypeFamily},                    // 祖母 (2x1)
-		{ID: 10, Width: 1, Height: 1, Type: PieceTypeSmall},                    // 番犬 (1x1)
-		{ID: 11, Width: 1, Height: 1, Type: PieceTypeSmall},                    // 兄嫁 (1x1)
-		{ID: 12, Width: 1, Height: 1, Type: PieceTypeSmall},                    // 丁稚1 (1x1)
-		{ID: 13, Width: 1, Height: 1, Type: PieceTypeSmall},                    // 丁稚2 (1x1)
-		{ID: 14, Width: 1, Height: 1, Type: PieceTypeSmall},                    // 丁稚3 (1x1)
-	}
-}
-
-// SetupInitialBoard creates the standard initial board configuration.
-// Layout:
-//
-//	空父娘娘母空
-//	空父娘娘母空
-//	手大大大大嫁
-//	丁番頭女中丁
-//	犬祖父祖母丁
-func SetupInitialBoard(pieces []Piece) Board {
-	var board Board
-
-	// Create piece lookup map
-	pieceMap := make(map[CellType]*Piece)
-	for i := range pieces {
-		pieceMap[pieces[i].ID] = &pieces[i]
-	}
-
-	// Place pieces according to the initial layout
-	placements := []struct {
-		id CellType
-		x  int
-		y  int
-	}{
-		{1, 2, 0},  // 娘 at (2,0)
-		{2, 1, 0},  // 父 at (1,0)
-		{3, 4, 0},  // 母 at (4,0)
-		{4, 1, 2},  // 大番頭 at (1,2)
-		{5, 0, 2},  // 手代 at (0,2)
-		{6, 3, 3},  // 女中 at (3,3)
-		{7, 1, 3},  // 番頭 at (1,3)
-		{8, 1, 4},  // 祖父 at (1,4)
-		{9, 3, 4},  // 祖母 at (3,4)
-		{10, 0, 4}, // 番犬 at (0,4)
-		{11, 5, 2}, // 兄嫁 at (5,2)
-		{12, 0, 3}, // 丁稚1 at (0,3)
-		{13, 5, 3}, // 丁稚2 at (5,3)
-		{14, 5, 4}, // 丁稚3 at (5,4)
-	}
-
-	for _, p := range placements {
-		if piece, ok := pieceMap[p.id]; ok {
-			board.PlacePiece(piece, p.x, p.y)
-		}
-	}
-
-	return board
-}
+// DefaultPieces and SetupInitialBoard are defined per build tag in
+// config_extended.go and config_classic.go.

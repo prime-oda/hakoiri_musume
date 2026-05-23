@@ -6,6 +6,14 @@ import (
 	"github.com/oda/hakoiri_musume/pkg/board"
 )
 
+// GoalX and GoalY define the target top-left position for the daughter piece.
+// They mirror board.GoalDaughterX / GoalDaughterY so the goal state tracks the
+// build tag (extended / classic) automatically.
+const (
+	GoalX = board.GoalDaughterX
+	GoalY = board.GoalDaughterY
+)
+
 // BidirectionalState represents a state in bidirectional search.
 type BidirectionalState struct {
 	Board board.Board
@@ -167,7 +175,7 @@ func (s *BidirectionalSolver) Solve(initial *board.Board) (*SearchResult, error)
 		moves := moveGen.Generate(&current.Board)
 		for _, move := range moves {
 			piece := moveGen.GetPiece(move.PieceID)
-			newBoard := board.ApplyMove(current.Board, piece, move.FromX, move.FromY, move.Direction)
+			newBoard := board.ApplyMoveTo(current.Board, piece, move.FromX, move.FromY, move.ToX, move.ToY)
 
 			hash := hasher.Hash(&newBoard)
 			if _, exists := forwardVisited[hash]; !exists {
@@ -348,7 +356,7 @@ func (s *TrueBidirectionalSolver) expandLayer(
 		moves := moveGen.Generate(&state.Board)
 		for _, move := range moves {
 			piece := moveGen.GetPiece(move.PieceID)
-			newBoard := board.ApplyMove(state.Board, piece, move.FromX, move.FromY, move.Direction)
+			newBoard := board.ApplyMoveTo(state.Board, piece, move.FromX, move.FromY, move.ToX, move.ToY)
 
 			hash := hasher.Hash(&newBoard)
 			if _, exists := visited[hash]; !exists {
@@ -387,31 +395,14 @@ func (s *TrueBidirectionalSolver) reconstructPath(forward, backward *Bidirection
 	path := make([]board.Move, 0, len(forward.Path)+len(backward.Path))
 	path = append(path, forward.Path...)
 
-	// Reverse backward path
+	// Reverse backward path. A continuous move is symmetric: the inverse of
+	// moving a piece From->To is moving it To->From, so we just swap endpoints.
 	for i := len(backward.Path) - 1; i >= 0; i-- {
-		// Invert the direction for backward moves
 		move := backward.Path[i]
-		move.Direction = invertDirection(move.Direction)
 		move.FromX, move.ToX = move.ToX, move.FromX
 		move.FromY, move.ToY = move.ToY, move.FromY
 		path = append(path, move)
 	}
 
 	return path
-}
-
-// invertDirection returns the opposite direction.
-func invertDirection(dir board.Direction) board.Direction {
-	switch dir {
-	case board.DirUp:
-		return board.DirDown
-	case board.DirDown:
-		return board.DirUp
-	case board.DirLeft:
-		return board.DirRight
-	case board.DirRight:
-		return board.DirLeft
-	default:
-		return dir
-	}
 }

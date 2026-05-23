@@ -232,31 +232,13 @@ function findPositions(packed, out) {
     }
 }
 
-// 駒 (id, w, h, px, py) が direction (dx, dy) に dist だけスライドできる先頭エッジを検査。
-// dist=1, 2, ... と外側に伸ばしていく前提で、新規にカバーするセルだけ調べる。
-function checkLeadingEdge(packed, pieceId, w, h, px, py, dx, dy, dist) {
-    if (dy === -1) {
-        const row = (py - dist) * BOARD_W;
-        for (let c = 0; c < w; c++) {
-            const cell = getCell(packed, row + px + c);
-            if (cell !== 0 && cell !== pieceId) return false;
-        }
-    } else if (dy === 1) {
-        const row = (py + h - 1 + dist) * BOARD_W;
-        for (let c = 0; c < w; c++) {
-            const cell = getCell(packed, row + px + c);
-            if (cell !== 0 && cell !== pieceId) return false;
-        }
-    } else if (dx === -1) {
-        const col = px - dist;
-        for (let r = 0; r < h; r++) {
-            const cell = getCell(packed, (py + r) * BOARD_W + col);
-            if (cell !== 0 && cell !== pieceId) return false;
-        }
-    } else {
-        const col = px + w - 1 + dist;
-        for (let r = 0; r < h; r++) {
-            const cell = getCell(packed, (py + r) * BOARD_W + col);
+// 駒 (id, w, h) が左上 (x, y) を占有できるか (footprint が空きか) を検査。
+// 自分自身のセルは「動けば空く」ので通過可能として扱う。
+function footprintClear(packed, pieceId, w, h, x, y) {
+    for (let dy = 0; dy < h; dy++) {
+        const row = (y + dy) * BOARD_W;
+        for (let dx = 0; dx < w; dx++) {
+            const cell = getCell(packed, row + x + dx);
             if (cell !== 0 && cell !== pieceId) return false;
         }
     }
@@ -265,7 +247,13 @@ function checkLeadingEdge(packed, pieceId, w, h, px, py, dx, dy, dist) {
 
 const DIRS = [[0,-1],[0,1],[-1,0],[1,0]];
 
+// flood fill 用の使い回しバッファ (単一スレッドなので再入なし)。
+const _ffVisited = new Uint8Array(BOARD_SIZE);
+const _ffQueue   = new Int32Array(BOARD_SIZE);
+
 // 移動生成: {pieceId, fromX, fromY, toX, toY} の配列。
+// 連続移動ルール: 各駒を空きマス内で1マスずつ滑らせ、何度曲がってもよい。
+// 到達できる左上位置を flood fill で列挙し、各到達先を1手として出す。
 // posBuf は呼び出し側で確保された Int32Array(15) を渡してアロケーション削減。
 function generateMoves(packed, posBuf) {
     findPositions(packed, posBuf);
@@ -277,14 +265,24 @@ function generateMoves(packed, posBuf) {
         const py = (flat / BOARD_W) | 0;
         const w  = PIECE_W[id];
         const h  = PIECE_H[id];
-        for (let d = 0; d < 4; d++) {
-            const dx = DIRS[d][0], dy = DIRS[d][1];
-            const maxDist = (dx !== 0) ? (BOARD_W - 1) : (BOARD_H - 1);
-            for (let dist = 1; dist <= maxDist; dist++) {
-                const nx = px + dx * dist;
-                const ny = py + dy * dist;
-                if (nx < 0 || ny < 0 || nx + w > BOARD_W || ny + h > BOARD_H) break;
-                if (!checkLeadingEdge(packed, id, w, h, px, py, dx, dy, dist)) break;
+
+        _ffVisited.fill(0);
+        let head = 0, tail = 0;
+        _ffVisited[flat] = 1;
+        _ffQueue[tail++] = flat;
+        while (head < tail) {
+            const cf = _ffQueue[head++];
+            const cx = cf % BOARD_W;
+            const cy = (cf / BOARD_W) | 0;
+            for (let d = 0; d < 4; d++) {
+                const nx = cx + DIRS[d][0];
+                const ny = cy + DIRS[d][1];
+                if (nx < 0 || ny < 0 || nx + w > BOARD_W || ny + h > BOARD_H) continue;
+                const nf = ny * BOARD_W + nx;
+                if (_ffVisited[nf]) continue;
+                if (!footprintClear(packed, id, w, h, nx, ny)) continue;
+                _ffVisited[nf] = 1;
+                _ffQueue[tail++] = nf;
                 moves.push({ pieceId: id, fromX: px, fromY: py, toX: nx, toY: ny });
             }
         }

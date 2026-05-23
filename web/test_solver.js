@@ -6,8 +6,8 @@
 //   (2) G_final equivalent board (reconstructed with JS piece IDs that
 //       produce the same PieceType-per-cell as Go's G_final) hashes to a
 //       canonical that the table reports as distance 0.
-//   (3) Initial board is NOT in the table (it sits at d=49 from G_final,
-//       outside K=21 coverage).
+//   (3) Initial board is NOT in the table (it sits at d=38 from G_final,
+//       outside K=26 coverage).
 //   (4) From initial, generateMoves returns a non-empty list.
 //
 // Run: node web/test_solver.js
@@ -65,28 +65,30 @@ const initialPieces = [
     { id: 14, x: 5, y: 4, width: 1, height: 1 },  // 丁3
 ];
 
-// G_final (from Go precompute output, reconstructed with JS piece IDs whose PieceType
-// matches Go's PieceType at each cell):
-//   Row 0: Family Family Family Family Small  FatherMother
-//   Row 1: GrandM GrandM GrandM GrandM Small  FatherMother
-//   Row 2: Small  Family Family Family Family Small
-//   Row 3: .      .      Daughter      FatherMother Small
-//   Row 4: .      .      Daughter      FatherMother Small
+// G_final (from Go precompute output under the continuous-move rule, reconstructed
+// with JS piece IDs whose PieceType matches Go's PieceType at each cell). Same-type
+// pieces are interchangeable for the type-based Zobrist hash, so the exact JS id used
+// within a type does not matter — only shape, type, and position do.
+//   Row 0: Family Family Small        FatherMother Small        Small
+//   Row 1: Family Family Small        FatherMother Family       Family
+//   Row 2: GrandM GrandM GrandM       GrandM       Family       Family
+//   Row 3: .      .      Daughter     Daughter     FatherMother Small
+//   Row 4: .      .      Daughter     Daughter     FatherMother Small
 const gFinalPieces = [
     { id: 1,  x: 2, y: 3, width: 2, height: 2 },  // 娘 -> Daughter (2,3)
     { id: 2,  x: 4, y: 3, width: 1, height: 2 },  // 父 -> FatherMother (4,3)
-    { id: 3,  x: 5, y: 0, width: 1, height: 2 },  // 母 -> FatherMother (5,0)
-    { id: 4,  x: 4, y: 0, width: 1, height: 1 },  // 手代 -> Small (4,0)
-    { id: 5,  x: 0, y: 1, width: 4, height: 1 },  // 大番頭 -> GrandManager (0,1)
-    { id: 6,  x: 4, y: 1, width: 1, height: 1 },  // 嫁 -> Small (4,1)
-    { id: 7,  x: 0, y: 2, width: 1, height: 1 },  // 丁1 -> Small (0,2)
+    { id: 3,  x: 3, y: 0, width: 1, height: 2 },  // 母 -> FatherMother (3,0)
+    { id: 4,  x: 2, y: 1, width: 1, height: 1 },  // 手代 -> Small (2,1)
+    { id: 5,  x: 0, y: 2, width: 4, height: 1 },  // 大番頭 -> GrandManager (0,2)
+    { id: 6,  x: 5, y: 4, width: 1, height: 1 },  // 嫁 -> Small (5,4)
+    { id: 7,  x: 5, y: 0, width: 1, height: 1 },  // 丁1 -> Small (5,0)
     { id: 8,  x: 0, y: 0, width: 2, height: 1 },  // 番頭 -> Family (0,0)
-    { id: 9,  x: 2, y: 0, width: 2, height: 1 },  // 女中 -> Family (2,0)
-    { id: 10, x: 5, y: 2, width: 1, height: 1 },  // 丁2 -> Small (5,2)
-    { id: 11, x: 5, y: 3, width: 1, height: 1 },  // 犬 -> Small (5,3)
-    { id: 12, x: 1, y: 2, width: 2, height: 1 },  // 祖父 -> Family (1,2)
-    { id: 13, x: 3, y: 2, width: 2, height: 1 },  // 祖母 -> Family (3,2)
-    { id: 14, x: 5, y: 4, width: 1, height: 1 },  // 丁3 -> Small (5,4)
+    { id: 9,  x: 0, y: 1, width: 2, height: 1 },  // 女中 -> Family (0,1)
+    { id: 10, x: 2, y: 0, width: 1, height: 1 },  // 丁2 -> Small (2,0)
+    { id: 11, x: 4, y: 0, width: 1, height: 1 },  // 犬 -> Small (4,0)
+    { id: 12, x: 4, y: 2, width: 2, height: 1 },  // 祖父 -> Family (4,2)
+    { id: 13, x: 4, y: 1, width: 2, height: 1 },  // 祖母 -> Family (4,1)
+    { id: 14, x: 5, y: 3, width: 1, height: 1 },  // 丁3 -> Small (5,3)
 ];
 
 // Crude mock of the Game object the solver expects.
@@ -131,7 +133,7 @@ function hex64(lo, hi) {
     }
     console.log('Test 1 OK: G_final → d=0');
 
-    // Test 2: initial board NOT in table (d=49 from G_final, K=21)
+    // Test 2: initial board NOT in table (d=38 from G_final, K=26)
     const initialPacked = packFromPieces(initialPieces);
     computeHashes(initialPacked, h);
     const isH2 = (h[1] >>> 0) < (h[3] >>> 0) || ((h[1] >>> 0) === (h[3] >>> 0) && (h[0] >>> 0) < (h[2] >>> 0));
@@ -162,8 +164,8 @@ function hex64(lo, hi) {
         throw new Error('Test 4 FAIL: solver returned null');
     }
     console.log(`Test 4 OK: ${result.steps} moves found, ${result.states.toLocaleString()} states explored, ${elapsed}ms, algorithm=${result.algorithm}`);
-    if (result.steps !== 49) {
-        console.warn(`  WARN: expected 49 moves, got ${result.steps}`);
+    if (result.steps !== 38) {
+        console.warn(`  WARN: expected 38 moves, got ${result.steps}`);
         // Replay moves and verify final position
         const { packFromPieces } = window.__solverInternal;
         let packed = packFromPieces(initialPieces);

@@ -170,66 +170,49 @@ class Piece {
 
     canMoveTo(newX, newY, board) {
         // 盤面の境界チェック
-        if (newX < 0 || newY < 0 || 
-            newX + this.width > board.width || 
+        if (newX < 0 || newY < 0 ||
+            newX + this.width > board.width ||
             newY + this.height > board.height) {
             return false;
         }
 
-        // 現在位置から新しい位置への移動がスライド可能かチェック
-        const dx = newX - this.x;
-        const dy = newY - this.y;
-
         // 移動なしの場合は無効
-        if (dx === 0 && dy === 0) return false;
+        if (newX === this.x && newY === this.y) return false;
 
-        // 斜め移動は無効（上下左右のみ）
-        if (dx !== 0 && dy !== 0) return false;
-
-        // 段階的にチェック
-        const steps = Math.max(Math.abs(dx), Math.abs(dy));
-        const stepX = dx === 0 ? 0 : (dx > 0 ? 1 : -1);
-        const stepY = dy === 0 ? 0 : (dy > 0 ? 1 : -1);
-
-        for (let step = 1; step <= steps; step++) {
-            const intermediateX = this.x + stepX * step;
-            const intermediateY = this.y + stepY * step;
-            
-            if (!this.canSlideTo(intermediateX, intermediateY, board)) {
-                return false;
-            }
-        }
-        return true;
+        // 連続移動ルール: 空きマスを伝って到達できる位置なら（途中で曲がっても）有効。
+        return this.getPossibleMoves(board).some(m => m.x === newX && m.y === newY);
     }
 
     getPossibleMoves(board) {
-        const possibleMoves = [];
-        const directions = [
+        // 駒を空きマス内で1マスずつ滑らせ、何度曲がってもよい連続移動。
+        // 到達できる左上位置を flood fill で列挙する（自分の現在セルは通過可能）。
+        const dirs = [
             { x: 0, y: -1 }, // 上
             { x: 0, y: 1 },  // 下
             { x: -1, y: 0 }, // 左
             { x: 1, y: 0 }   // 右
         ];
+        const startKey = this.y * board.width + this.x;
+        const visited = new Set([startKey]);
+        const queue = [{ x: this.x, y: this.y }];
+        const possibleMoves = [];
 
-        for (const dir of directions) {
-            let step = 1;
-            while (true) {
-                const newX = this.x + dir.x * step;
-                const newY = this.y + dir.y * step;
-
-                // 境界チェック
-                if (newX < 0 || newY < 0 || 
-                    newX + this.width > board.width || 
-                    newY + this.height > board.height) {
-                    break;
+        while (queue.length > 0) {
+            const cur = queue.shift();
+            for (const dir of dirs) {
+                const nx = cur.x + dir.x;
+                const ny = cur.y + dir.y;
+                if (nx < 0 || ny < 0 ||
+                    nx + this.width > board.width ||
+                    ny + this.height > board.height) {
+                    continue;
                 }
-
-                if (this.canSlideTo(newX, newY, board)) {
-                    possibleMoves.push({ x: newX, y: newY });
-                    step++;
-                } else {
-                    break;
-                }
+                const key = ny * board.width + nx;
+                if (visited.has(key)) continue;
+                if (!this.canSlideTo(nx, ny, board)) continue;
+                visited.add(key);
+                queue.push({ x: nx, y: ny });
+                possibleMoves.push({ x: nx, y: ny });
             }
         }
         return possibleMoves;
@@ -901,36 +884,36 @@ class Game {
     }
 
     getPossibleMovesForPiece(piece, pieces) {
-        const possibleMoves = [];
-        const directions = [
+        // 連続移動ルール: 空きマスを伝って到達できる左上位置を flood fill で列挙。
+        const dirs = [
             { x: 0, y: -1 }, // 上
             { x: 0, y: 1 },  // 下
             { x: -1, y: 0 }, // 左
             { x: 1, y: 0 }   // 右
         ];
+        const W = this.board.width, H = this.board.height;
+        const visited = new Set([piece.y * W + piece.x]);
+        const queue = [{ x: piece.x, y: piece.y }];
+        const possibleMoves = [];
 
-        for (const dir of directions) {
-            let step = 1;
-            while (true) {
-                const newX = piece.x + dir.x * step;
-                const newY = piece.y + dir.y * step;
-
-                // 境界チェック
-                if (newX < 0 || newY < 0 || 
-                    newX + piece.width > this.board.width || 
-                    newY + piece.height > this.board.height) {
-                    break;
+        while (queue.length > 0) {
+            const cur = queue.shift();
+            for (const dir of dirs) {
+                const nx = cur.x + dir.x;
+                const ny = cur.y + dir.y;
+                if (nx < 0 || ny < 0 ||
+                    nx + piece.width > W || ny + piece.height > H) {
+                    continue;
                 }
-
-                if (this.canPieceMoveTo(piece, newX, newY, pieces)) {
-                    possibleMoves.push({ x: newX, y: newY });
-                    step++;
-                } else {
-                    break;
-                }
+                const key = ny * W + nx;
+                if (visited.has(key)) continue;
+                if (!this.canPieceMoveTo(piece, nx, ny, pieces)) continue;
+                visited.add(key);
+                queue.push({ x: nx, y: ny });
+                possibleMoves.push({ x: nx, y: ny });
             }
         }
-        
+
         return possibleMoves;
     }
 
@@ -1050,18 +1033,8 @@ class Game {
     formatSolverMove(move) {
         const piece = this.pieces.find(p => p.id === move.pieceId);
         const name = piece ? piece.name : `駒${move.pieceId}`;
-        const dx = move.toX - move.fromX;
-        const dy = move.toY - move.fromY;
-        let dir;
-        if (dy < 0) dir = '上';
-        else if (dy > 0) dir = '下';
-        else if (dx < 0) dir = '左';
-        else dir = '右';
-        // 移動は必ず水平または垂直の一方向。距離は非零の軸の絶対値。
-        const dist = Math.max(Math.abs(dx), Math.abs(dy));
-        return dist > 1
-            ? `${name} を ${dir} へ ${dist}マス移動`
-            : `${name} を ${dir} へ移動`;
+        // 連続移動は途中で曲がりうるので、単一方向ではなく到達先 (1始まりの列/行) で表す。
+        return `${name} を (列${move.toX + 1}, 行${move.toY + 1}) へ移動`;
     }
 
     showSolution(moves) {

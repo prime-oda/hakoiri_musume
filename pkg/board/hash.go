@@ -185,9 +185,3 @@ func (sh *StateHasher) Hash(b *Board) uint64 {
 func (sh *StateHasher) IncrementalHash(oldHash uint64, piece *Piece, fromX, fromY, toX, toY int) uint64 {
 	return sh.zobrist.IncrementalHash(oldHash, piece, fromX, fromY, toX, toY)
 }
-
-// HashWithMove computes the hash after applying a 1-cell move (without modifying the board).
-func (sh *StateHasher) HashWithMove(b *Board, piece *Piece, x, y int, dir Direction) uint64 {
-	tempBoard := ApplyMove(*b, piece, x, y, dir)
-	return sh.zobrist.Hash(&tempBoard)
-}

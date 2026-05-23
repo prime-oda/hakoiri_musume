@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 箱入り娘の拡張版「箱入り娘の大家族」パズル
 - 通常の箱入り娘（5×4マス）より大きな盤面（6×5マス）
 - スライディングパズルで娘を脱出させるのが目的
-- 同方向への複数マスのスライド移動を1手とする
+- 1つの駒の連続した動き（空きマスを伝って到達できる位置への移動。途中で何度向きを変えてもよい）を1手と数える
 
 #### 駒の構成（合計15コマ）
 - **娘（2×2）**: 脱出させる目標の駒
@@ -42,20 +42,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ├── web/                  # GitHub Pagesで配信されるブラウザ版ゲーム
 │   ├── index.html
 │   ├── style.css
-│   └── game.js
+│   ├── game.js           # ゲーム本体（描画・操作・手数カウント）
+│   ├── solver.js         # ブラウザ内 最短手ソルバー（BFS + 事前計算テーブル）
+│   └── precomputed/      # ゴール距離テーブル（goal_distances.bin / .bin.gz）
 ├── cmd/solver/main.go    # ソルバー CLI のエントリポイント
+├── cmd/precompute/main.go# ゴール距離テーブル生成 CLI
 ├── pkg/
 │   ├── board/            # 盤面表現・移動生成・Zobristハッシュ
 │   │   ├── board.go
-│   │   ├── moves.go
-│   │   └── hash.go
+│   │   ├── moves.go      # 連続移動ルールの flood-fill 移動生成
+│   │   ├── hash.go
+│   │   └── config_extended.go / config_classic.go  # 盤面定義（build tag で切替）
 │   └── solver/           # 探索アルゴリズム
 │       ├── bfs.go
-│       ├── idastar.go
-│       ├── astar.go
 │       ├── bidirectional.go
-│       ├── parallel.go
-│       └── heuristic.go
+│       ├── precompute.go # ゴール距離テーブル構築
+│       ├── packed.go / hashset.go
 ├── go.mod / go.sum
 └── .github/workflows/static.yml  # GitHub Pages デプロイ（web/ を配信）
 ```
@@ -76,19 +78,17 @@ go build -o solver ./cmd/solver
 ```
 
 ### 主なフラグ
-- `-algo`: `bfs` / `idastar` / `astar` / `bidirectional` / `parallel`
-- `-workers`: 並列探索のワーカー数（デフォルトCPU数）
+- `-algo`: `bfs` / `bidirectional`
 - `-max-states`: 探索する最大状態数（デフォルト 1,000,000,000）
 - `-max-time`: 探索の最大時間（デフォルト 30分）
 - `-verbose`: 進捗表示
 - `-bench`: ベンチマークモード
 
 ### アルゴリズム
-- **BFS**: 最短手解を保証
-- **IDA***: メモリ効率重視
-- **A***: 時間効率重視（メモリ消費大）
+- **BFS**: 最短手解を保証（既定。Zobristハッシュ + 事前計算テーブルと組み合わせる）
 - **双方向探索**: 順・逆方向から探索
-- **並列探索**: マルチワーカー対応
+
+> 連続移動ルールでは Manhattan 距離が許容ヒューリスティックにならない（1手で娘を任意位置へ運べる）ため、ヒューリスティック依存の IDA* / A* / 並列探索は廃止した。
 
 ### 主要パッケージ
 - **`pkg/board`**: 盤面を1次元配列で表現し、移動生成は `MoveGenerator` で実装。Zobristハッシュで状態の同一性判定と差分更新を行う

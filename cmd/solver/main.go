@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime"
 	"time"
 
 	"github.com/oda/hakoiri_musume/pkg/board"
@@ -15,21 +14,18 @@ import (
 
 func main() {
 	// Parse command line flags
-	algo := flag.String("algo", "bfs", "Search algorithm: bfs, idastar, astar, bidirectional, parallel")
-	workers := flag.Int("workers", runtime.NumCPU(), "Number of parallel workers (for parallel mode)")
+	algo := flag.String("algo", "bfs", "Search algorithm: bfs, bidirectional")
 	maxStates := flag.Int64("max-states", 1_000_000_000, "Maximum states to explore")
 	maxTime := flag.Duration("max-time", 30*time.Minute, "Maximum search time")
 	bench := flag.Bool("bench", false, "Run benchmark mode")
 	verbose := flag.Bool("verbose", false, "Show progress updates")
 	flag.Parse()
 
-	fmt.Println("=== 箱入り娘の大家族 Golang ソルバー ===")
+	fmt.Println("=== Hakoiri Musume Golang ソルバー ===")
+	fmt.Printf("パズル: %s\n", board.PuzzleName)
 	fmt.Printf("アルゴリズム: %s\n", *algo)
 	fmt.Printf("最大状態数: %d\n", *maxStates)
 	fmt.Printf("最大時間: %v\n", *maxTime)
-	if *algo == "parallel" {
-		fmt.Printf("ワーカー数: %d\n", *workers)
-	}
 	fmt.Println()
 
 	// Setup initial board
@@ -53,14 +49,8 @@ func main() {
 	switch *algo {
 	case "bfs":
 		result, err = runBFS(pieces, &initialBoard, *maxStates, *maxTime, *verbose)
-	case "idastar":
-		result, err = runIDAStar(pieces, &initialBoard, *maxStates, *maxTime, *verbose)
-	case "astar":
-		result, err = runAStar(pieces, &initialBoard, *maxStates, *maxTime, *verbose)
 	case "bidirectional":
 		result, err = runBidirectional(pieces, &initialBoard, *maxStates, *maxTime, *verbose)
-	case "parallel":
-		result, err = runParallel(pieces, &initialBoard, *workers, *maxStates, *maxTime, *verbose)
 	default:
 		fmt.Fprintf(os.Stderr, "未知のアルゴリズム: %s\n", *algo)
 		os.Exit(1)
@@ -117,52 +107,6 @@ func runBFS(pieces []board.Piece, initial *board.Board, maxStates int64, maxTime
 	return result, err
 }
 
-func runIDAStar(pieces []board.Piece, initial *board.Board, maxStates int64, maxTime time.Duration, verbose bool) (*solver.SearchResult, error) {
-	s := solver.NewIDAStarSolver(pieces)
-	s.MaxStates = maxStates
-	s.MaxTime = maxTime
-
-	if verbose {
-		s.OnProgress = func(stats solver.SolverStats, threshold int) {
-			fmt.Printf("\rIDA* 閾値: %d, 状態: %d, 深度: %d, 時間: %v, 速度: %.0f/秒",
-				threshold, stats.ExploredStates, stats.MaxDepthReached, stats.Elapsed.Round(time.Second), stats.StatesPerSecond)
-		}
-	}
-
-	result, err := s.Solve(initial)
-	if verbose {
-		fmt.Println()
-	}
-
-	if result == nil {
-		result = &solver.SearchResult{}
-	}
-	return result, err
-}
-
-func runAStar(pieces []board.Piece, initial *board.Board, maxStates int64, maxTime time.Duration, verbose bool) (*solver.SearchResult, error) {
-	s := solver.NewAStarSolver(pieces)
-	s.MaxStates = maxStates
-	s.MaxTime = maxTime
-
-	if verbose {
-		s.OnProgress = func(stats solver.SolverStats) {
-			fmt.Printf("\rA* 探索中... 状態: %d, 深度: %d, 時間: %v, 速度: %.0f/秒",
-				stats.ExploredStates, stats.MaxDepthReached, stats.Elapsed.Round(time.Second), stats.StatesPerSecond)
-		}
-	}
-
-	result, err := s.Solve(initial)
-	if verbose {
-		fmt.Println()
-	}
-
-	if result == nil {
-		result = &solver.SearchResult{}
-	}
-	return result, err
-}
-
 func runBidirectional(pieces []board.Piece, initial *board.Board, maxStates int64, maxTime time.Duration, verbose bool) (*solver.SearchResult, error) {
 	s := solver.NewBidirectionalSolver(pieces)
 	s.MaxStates = maxStates
@@ -186,30 +130,8 @@ func runBidirectional(pieces []board.Piece, initial *board.Board, maxStates int6
 	return result, err
 }
 
-func runParallel(pieces []board.Piece, initial *board.Board, workers int, maxStates int64, maxTime time.Duration, verbose bool) (*solver.SearchResult, error) {
-	s := solver.NewParallelSolver(pieces, workers)
-	s.MaxStates = maxStates
-	s.MaxTime = maxTime
-
-	if verbose {
-		s.OnProgress = func(stats solver.SolverStats, workerID int) {
-			fmt.Printf("\r並列探索中... ワーカー %d: 状態 %d\n", workerID, stats.ExploredStates)
-		}
-	}
-
-	result, err := s.Solve(initial)
-	if verbose {
-		fmt.Println()
-	}
-
-	if result == nil {
-		result = &solver.SearchResult{}
-	}
-	return result, err
-}
-
 func runBenchmark(pieces []board.Piece, initial *board.Board) {
-	fmt.Println("=== ベンチマーク ===\n")
+	fmt.Print("=== ベンチマーク ===\n\n")
 
 	// Benchmark move generation
 	fmt.Println("移動生成ベンチマーク:")
@@ -270,28 +192,9 @@ func runBenchmark(pieces []board.Piece, initial *board.Board) {
 	}
 }
 
-func directionName(dir board.Direction) string {
-	switch dir {
-	case board.DirUp:
-		return "上"
-	case board.DirDown:
-		return "下"
-	case board.DirLeft:
-		return "左"
-	case board.DirRight:
-		return "右"
-	default:
-		return "不明"
-	}
-}
-
-// pieceName returns the Japanese name of a piece by ID.
-var pieceNames = map[board.CellType]string{
-	1: "娘", 2: "父", 3: "母", 4: "大番頭",
-	5: "手代", 6: "女中", 7: "番頭", 8: "祖父",
-	9: "祖母", 10: "番犬", 11: "兄嫁",
-	12: "丁稚1", 13: "丁稚2", 14: "丁稚3",
-}
+// pieceNames is loaded from board.PieceNames() so it stays in sync with the
+// active build tag (extended / classic).
+var pieceNames = board.PieceNames()
 
 func writeSolution(pieces []board.Piece, initialBoard board.Board, result *solver.SearchResult) error {
 	f, err := os.Create("solve.txt")
@@ -300,7 +203,7 @@ func writeSolution(pieces []board.Piece, initialBoard board.Board, result *solve
 	}
 	defer f.Close()
 
-	fmt.Fprintf(f, "=== 箱入り娘の大家族 解答 ===\n")
+	fmt.Fprintf(f, "=== %s 解答 ===\n", board.PuzzleName)
 	fmt.Fprintf(f, "手数: %d\n", result.Steps)
 	fmt.Fprintf(f, "探索状態数: %d\n", result.Stats.ExploredStates)
 	fmt.Fprintf(f, "経過時間: %v\n", result.Stats.Elapsed)
@@ -322,13 +225,9 @@ func writeSolution(pieces []board.Piece, initialBoard board.Board, result *solve
 		if name == "" {
 			name = fmt.Sprintf("駒%c", 'A'+move.PieceID-1)
 		}
-		dirName := directionName(move.Direction)
-		dist := move.Distance()
-		if dist > 1 {
-			fmt.Fprintf(f, "手順 %3d: %s を %s へ %dマス移動\n", i+1, name, dirName, dist)
-		} else {
-			fmt.Fprintf(f, "手順 %3d: %s を %s へ移動\n", i+1, name, dirName)
-		}
+		// A continuous move may turn corners, so it is described by its
+		// destination (1-based 列/行) rather than a single direction+distance.
+		fmt.Fprintf(f, "手順 %3d: %s を (列%d, 行%d) へ移動\n", i+1, name, move.ToX+1, move.ToY+1)
 
 		piece := pieceMap[move.PieceID]
 		currentBoard = board.ApplyMoveTo(currentBoard, piece, move.FromX, move.FromY, move.ToX, move.ToY)
